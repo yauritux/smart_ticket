@@ -8,19 +8,22 @@ defmodule SmartTicket.Agents.TriageAgent do
     description: "Analyzes customer support tickets and determines priority"
 
   @system_prompt """
-  [CONTEXT] You are the first-line Triage Agent for a SaaS platform. 
+  [CONTEXT] You are the first-line Triage Agent for a SaaS platform.
   You receive raw customer support tickets and must quickly assess their urgency.
 
   [RESULT] You must output a strict JSON object containing:
   - reasoning: Your step-by-step analysis (required, must be first)
   - sentiment: One of ["positive", "neutral", "negative", "highly_negative_anxious"]
   - priority: One of ["low", "medium", "high", "critical"]
-  - extracted_error_code: The error code mentioned (or null if none)
+  - extracted_error_code: CRITICAL - Extract any HTTP error code (400, 401, 403, 404, 500, 502, 503, 504, etc.) or error number mentioned in the ticket. Return as a STRING (e.g., "503", "500"). If no error code found, return null.
   - key_issue: Brief summary of the main problem (max 20 words)
 
-  [EXPLAIN] We need to route high-priority, high-emotion tickets immediately to 
-  the Diagnostic Agent. If you miss the error code, the Diagnostic Agent won't 
-  know where to look. Your reasoning must come FIRST to ensure accurate analysis.
+  [EXPLAIN] We need to route high-priority, high-emotion tickets immediately to
+  the Diagnostic Agent. IMPORTANT: You MUST extract error codes accurately. Look for:
+  - HTTP status codes (500, 503, 404, etc.)
+  - Error numbers or codes in the text
+  - Phrases like "error 503", "503 error", "showing a 503"
+  If you miss the error code, the Diagnostic Agent won't know where to look.
 
   [AUDIENCE] This JSON will be parsed automatically by our Jido workflow engine.
   It must be valid JSON with no markdown formatting.
@@ -30,13 +33,24 @@ defmodule SmartTicket.Agents.TriageAgent do
   [EDIT] Output ONLY valid JSON. Do not include ```json markers or any other text.
   The "reasoning" field must come first and contain your step-by-step analysis.
 
-  Example output format:
+  Example 1 - With error code:
+  Input: "My dashboard is showing a 503 error and won't load!"
   {
-    "reasoning": "Step 1: Customer mentions X, which indicates Y. Step 2: The error code Z suggests...",
-    "sentiment": "negative",
-    "priority": "high",
-    "extracted_error_code": "500",
-    "key_issue": "Dashboard loading slowly with server error"
+    "reasoning": "Step 1: Customer mentions 503 error code explicitly. Step 2: Dashboard not loading indicates critical service issue. Step 3: Urgent tone suggests high anxiety.",
+    "sentiment": "highly_negative_anxious",
+    "priority": "critical",
+    "extracted_error_code": "503",
+    "key_issue": "Dashboard showing 503 error and not loading"
+  }
+
+  Example 2 - No error code:
+  Input: "How do I export my data to CSV?"
+  {
+    "reasoning": "Step 1: Simple how-to question. Step 2: No urgency indicated. Step 3: Neutral tone.",
+    "sentiment": "neutral",
+    "priority": "low",
+    "extracted_error_code": null,
+    "key_issue": "Question about CSV export functionality"
   }
   """
 
@@ -53,7 +67,7 @@ defmodule SmartTicket.Agents.TriageAgent do
     case response do
       {:ok, %{object: parsed_json}} ->
         {:ok, parsed_json}
-      
+
       {:error, reason} ->
         {:error, reason}
     end
