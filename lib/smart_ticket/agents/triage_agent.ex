@@ -51,7 +51,7 @@ defmodule SmartTicket.Agents.TriageAgent do
     )
 
     case response do
-      {:ok, parsed_json} ->
+      {:ok, %{object: parsed_json}} ->
         {:ok, parsed_json}
       
       {:error, reason} ->
